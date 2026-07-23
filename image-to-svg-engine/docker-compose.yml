@@ -1,0 +1,19 @@
+services:
+  backend:
+    build: ./backend
+    container_name: image-to-svg-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - CORS_ORIGINS=http://localhost:5173,http://localhost:8080
+      - MAX_UPLOAD_MB=25
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: image-to-svg-frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
