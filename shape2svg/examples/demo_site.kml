@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document><name>demo_site</name>
+    <Placemark><name>Region 1</name><Polygon><outerBoundaryIs><LinearRing><coordinates>27.5422857,53.9075800,0 27.5417143,53.9040000,0 27.5462857,53.9016000,0 27.5542857,53.9012000,0 27.5588571,53.9040000,0 27.5576000,53.9080200,0 27.5485429,53.9088000,0 27.5422857,53.9075800,0</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>
+  </Document>
+</kml>

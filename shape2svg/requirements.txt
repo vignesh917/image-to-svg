@@ -1,0 +1,7 @@
+opencv-python-headless>=4.8
+numpy>=1.24
+scikit-image>=0.21
+fastapi>=0.104
+uvicorn>=0.24
+python-multipart>=0.0.6
+pytest>=7.4

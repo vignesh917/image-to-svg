@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>shape2svg — image → SVG outline extraction</title>
+<style>
+  :root {
+    --bg: #0f172a; --panel: #1e293b; --panel2: #273449; --line: #334155;
+    --text: #e2e8f0; --muted: #94a3b8; --accent: #38bdf8; --accent2: #f472b6;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, -apple-system, sans-serif; height: 100vh; display: flex; flex-direction: column; }
+  header { padding: 14px 22px; border-bottom: 1px solid var(--line); display: flex; align-items: baseline; gap: 14px; }
+  header h1 { font-size: 18px; } header h1 b { color: var(--accent); }
+  header span { color: var(--muted); font-size: 12.5px; }
+  main { flex: 1; display: flex; min-height: 0; }
+  aside { width: 300px; padding: 18px; border-right: 1px solid var(--line); overflow-y: auto; flex-shrink: 0; }
+  .drop { border: 2px dashed var(--line); border-radius: 12px; padding: 26px 14px; text-align: center; color: var(--muted); cursor: pointer; transition: .15s; }
+  .drop:hover, .drop.on { border-color: var(--accent); color: var(--accent); background: rgba(56,189,248,.06); }
+  .drop b { display: block; color: var(--text); margin-bottom: 4px; }
+  fieldset { border: 1px solid var(--line); border-radius: 10px; margin-top: 16px; padding: 12px 14px 14px; }
+  legend { padding: 0 6px; color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: .07em; }
+  label { display: flex; justify-content: space-between; align-items: center; margin: 9px 0 3px; color: var(--muted); font-size: 12.5px; }
+  label output { color: var(--text); font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  select, button.primary { width: 100%; background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13.5px; }
+  .row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+  .row label { margin: 0; gap: 6px; justify-content: flex-start; }
+  input[type=checkbox] { accent-color: var(--accent); }
+  section { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .tabs { display: flex; gap: 4px; padding: 10px 18px 0; }
+  .tabs button { background: none; border: none; color: var(--muted); padding: 8px 14px; cursor: pointer; border-radius: 8px 8px 0 0; font-size: 13.5px; }
+  .tabs button.on { background: var(--panel); color: var(--accent); }
+  .stage { flex: 1; margin: 0 18px 12px; background: var(--panel); border-radius: 0 10px 10px 10px; display: flex; align-items: center; justify-content: center; overflow: auto; position: relative; min-height: 0; }
+  .stage > * { max-width: 96%; max-height: 94%; }
+  .stage svg { background: #fff; border-radius: 6px; height: auto; }
+  .stage img { border-radius: 6px; }
+  .empty { color: var(--muted); text-align: center; padding: 40px; }
+  .bar { display: flex; gap: 8px; padding: 0 18px 14px; align-items: center; flex-wrap: wrap; }
+  .chip { background: var(--panel2); border: 1px solid var(--line); color: var(--muted); border-radius: 999px; padding: 3px 11px; font-size: 12px; }
+  .chip b { color: var(--text); }
+  .bar .dl { margin-left: auto; display: flex; gap: 8px; }
+  .dl button { background: var(--accent); border: none; color: #082f49; font-weight: 600; padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+  .dl button.alt { background: var(--panel2); color: var(--text); border: 1px solid var(--line); }
+  .spin { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(15,23,42,.55); border-radius: 10px; }
+  .spin::after { content: ""; width: 34px; height: 34px; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: r .7s linear infinite; }
+  @keyframes r { to { transform: rotate(360deg); } }
+  .err { color: #fda4af; padding: 8px 18px; font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1><b>shape2svg</b> — dynamic outline extraction</h1>
+  <span>drop any image → contours detected → clean SVG. No per-image logic.</span>
+</header>
+<main>
+  <aside>
+    <div class="drop" id="drop">
+      <b>Drop an image here</b> or click to browse<br><small>jpg · png · webp · bmp</small>
+      <input type="file" id="file" accept="image/*" hidden>
+    </div>
+
+    <fieldset>
+      <legend>Mode</legend>
+      <select id="mode">
+        <option value="auto" selected>auto-detect (recommended)</option>
+        <option value="regions">regions — closed outlines</option>
+        <option value="lines">lines — track / wall network</option>
+      </select>
+      <div class="row"><label><input type="checkbox" id="join" checked> join lines across junctions</label></div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Detail</legend>
+      <label>simplification (regions) <output id="epsilonV">0.005</output></label>
+      <input type="range" id="epsilon" min="0.001" max="0.03" step="0.001" value="0.005">
+      <label>min region area <output id="min_areaV">0.005</output></label>
+      <input type="range" id="min_area" min="0.0005" max="0.05" step="0.0005" value="0.005">
+      <label>min line length <output id="min_lengthV">auto</output></label>
+      <input type="range" id="min_length" min="0" max="0.15" step="0.005" value="0">
+      <label>texture merge <output id="mergeV">auto</output></label>
+      <input type="range" id="merge" min="0" max="15" step="2" value="0">
+      <label>blur <output id="blurV">auto</output></label>
+      <input type="range" id="blur" min="0" max="15" step="2" value="0">
+    </fieldset>
+
+    <fieldset>
+      <legend>Output</legend>
+      <label>stroke width <output id="stroke_widthV">2</output></label>
+      <input type="range" id="stroke_width" min="0.5" max="8" step="0.5" value="2">
+      <div class="row">
+        <label><input type="checkbox" id="holes" checked> holes</label>
+        <label><input type="checkbox" id="hull"> convex hull</label>
+      </div>
+    </fieldset>
+  </aside>
+
+  <section>
+    <div class="tabs">
+      <button data-t="original">Original</button>
+      <button data-t="svg" class="on">SVG</button>
+      <button data-t="overlay">Overlay check</button>
+    </div>
+    <div class="stage" id="stage"><div class="empty">Drop an image to begin.<br>The pipeline auto-detects whether it is a solid shape (→ region outlines) or a line network (→ traced paths).</div></div>
+    <div class="err" id="err"></div>
+    <div class="bar" id="bar" hidden>
+      <span class="chip">mode <b id="sMode">–</b></span>
+      <span class="chip">shapes <b id="sShapes">–</b></span>
+      <span class="chip">points <b id="sPoints">–</b></span>
+      <span class="chip" id="sReason" title="">why?</span>
+      <span class="dl">
+        <button class="alt" id="dlJson">JSON</button>
+        <button id="dlSvg">Download SVG</button>
+      </span>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let currentFile = null, res = null, tab = "svg", originalURL = null, timer = null;
+
+const sliders = ["epsilon","min_area","min_length","merge","blur","stroke_width"];
+sliders.forEach(id => $(id).addEventListener("input", () => {
+  const v = parseFloat($(id).value);
+  $(id+"V").textContent = (v === 0 && ["min_length","merge","blur"].includes(id)) ? "auto" : v;
+  schedule();
+}));
+["mode","join","holes","hull"].forEach(id => $(id).addEventListener("change", schedule));
+
+function schedule() { if (!currentFile) return; clearTimeout(timer); timer = setTimeout(run, 250); }
+
+const drop = $("drop");
+drop.addEventListener("click", () => $("file").click());
+$("file").addEventListener("change", e => { if (e.target.files[0]) load(e.target.files[0]); });
+["dragover","dragleave","drop"].forEach(ev => drop.addEventListener(ev, e => {
+  e.preventDefault(); drop.classList.toggle("on", ev === "dragover");
+  if (ev === "drop" && e.dataTransfer.files[0]) load(e.dataTransfer.files[0]);
+}));
+document.addEventListener("paste", e => {
+  const f = [...(e.clipboardData?.files || [])][0]; if (f) load(f);
+});
+
+function load(f) {
+  currentFile = f;
+  if (originalURL) URL.revokeObjectURL(originalURL);
+  originalURL = URL.createObjectURL(f);
+  run();
+}
+
+async function run() {
+  $("err").textContent = "";
+  const stage = $("stage");
+  const spin = document.createElement("div"); spin.className = "spin"; stage.appendChild(spin);
+  const fd = new FormData();
+  fd.append("file", currentFile);
+  fd.append("mode", $("mode").value);
+  fd.append("epsilon", $("epsilon").value);
+  fd.append("min_area", $("min_area").value);
+  fd.append("stroke_width", $("stroke_width").value);
+  fd.append("join", $("join").checked);
+  fd.append("holes", $("holes").checked);
+  fd.append("hull", $("hull").checked);
+  if (+$("min_length").value > 0) fd.append("min_length", $("min_length").value);
+  if (+$("merge").value > 0) fd.append("merge", $("merge").value);
+  if (+$("blur").value > 0) fd.append("blur", $("blur").value);
+  try {
+    const r = await fetch("/api/extract", { method: "POST", body: fd });
+    if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+    res = await r.json();
+    $("bar").hidden = false;
+    $("sMode").textContent = res.stats.mode_used;
+    $("sShapes").textContent = res.stats.n_regions + res.stats.n_polylines;
+    $("sPoints").textContent = res.stats.total_points;
+    const ad = res.stats.auto_detect;
+    $("sReason").textContent = ad ? ad.reason : "manual mode";
+    render();
+  } catch (e) { $("err").textContent = "⚠ " + e.message; }
+  spin.remove();
+}
+
+document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => {
+  tab = b.dataset.t;
+  document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("on", x === b));
+  render();
+}));
+
+function render() {
+  const stage = $("stage");
+  if (!res) return;
+  if (tab === "svg") stage.innerHTML = res.svg;
+  else if (tab === "original") stage.innerHTML = `<img src="${originalURL}">`;
+  else stage.innerHTML = res.overlay ? `<img src="${res.overlay}">` : `<div class="empty">no overlay</div>`;
+}
+
+function download(name, text, type) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type }));
+  a.download = name; a.click(); URL.revokeObjectURL(a.href);
+}
+const base = () => (currentFile?.name || "shape").replace(/\.[^.]+$/, "");
+$("dlSvg").addEventListener("click", () => res && download(base() + ".svg", res.svg, "image/svg+xml"));
+$("dlJson").addEventListener("click", () => res && download(base() + ".json", res.json, "application/json"));
+</script>
+</body>
+</html>
